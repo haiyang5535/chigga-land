@@ -6,8 +6,77 @@
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
-    <canvas id="gameCanvas"></canvas>
+    <div id="app">
+      <!-- Full Screen Game -->
+      <canvas id="gameCanvas"></canvas>
 
+      <!-- Top Left: Profile & Stats -->
+      <div class="hud-panel" id="stats-bar">
+        <div class="logo">🏰 Chigga Land</div>
+        <div id="turn-indicator" class="badge">Waiting for P1...</div>
+        <div id="vp-badge">🏆 0 VP</div>
+        <button
+          id="resetGameBtn"
+          class="btn-sec"
+          style="font-size: 12px; padding: 5px 10px"
+        >
+          🔄 Reset
+        </button>
+      </div>
+
+      <!-- Top Right: Dynamic Player List -->
+      <div class="hud-panel" id="player-list">
+        <!-- Filled by JS: Avatar | Name | Cards | Army -->
+      </div>
+
+      <!-- Right Side: Active Trades -->
+      <div id="trade-sidebar" class="hud-panel">
+        <h3>Active Trades</h3>
+        <div id="trade-feed"></div>
+      </div>
+
+      <!-- Bottom Left: Activity Feed (Discord Style) -->
+      <div class="hud-panel" id="chat-panel">
+        <div id="game-log">
+          <div id="chat-messages"></div>
+        </div>
+        <div class="chat-input-wrapper">
+          <input
+            type="text"
+            id="chatInput"
+            placeholder="Say something..."
+            maxlength="200"
+          />
+          <button id="sendChatBtn">➤</button>
+        </div>
+      </div>
+
+      <!-- Bottom Center: Hand & Action Bar -->
+      <div id="action-dock">
+        <div id="hand-container"><!-- JS injects card divs here --></div>
+        <div class="separator"></div>
+        <div id="controls">
+          <button id="rollDiceBtn" class="btn-main">🎲 Roll</button>
+          <button id="tradeBtn" class="btn-sec">🤝 Trade</button>
+          <button id="buildRoadBtn" class="btn-sec" title="Road">🛣️</button>
+          <button id="buildSettlementBtn" class="btn-sec" title="Settlement">
+            🏠
+          </button>
+          <button id="buildCityBtn" class="btn-sec" title="City">🏰</button>
+          <button id="buyDevCardBtn" class="btn-sec" title="Dev Card">
+            🃏
+          </button>
+          <button id="endTurnBtn" class="btn-danger">🛑 End</button>
+        </div>
+      </div>
+
+      <!-- Floating Trade Offer (Hidden by default) -->
+      <div id="activeOffers" class="toast-container">
+        <!-- JS injects offers here -->
+      </div>
+    </div>
+
+    <!-- Modals (Keep existing functionality) -->
     <div id="joinModal" class="modal">
       <div class="modal-content">
         <h1>Welcome to Chigga Land</h1>
@@ -70,16 +139,6 @@
           Close
         </button>
 
-        <div
-          id="activeOffers"
-          style="
-            margin-top: 20px;
-            text-align: left;
-            max-height: 150px;
-            overflow-y: auto;
-          "
-        ></div>
-
         <hr style="margin: 20px 0; border-color: rgba(255, 255, 255, 0.1)" />
 
         <h3>Bank Trade (4:1)</h3>
@@ -102,92 +161,70 @@
       </div>
     </div>
 
-    <div id="ui-layer">
-      <!-- Top Bar -->
-      <div id="top-bar">
-        <div id="logo">Chigga Land</div>
-        <div id="vp-bar">0 VP</div>
-        <div id="player-list">
-          <!-- Player badges injected here -->
+    <!-- Dice Container -->
+    <div id="dice-container" class="hidden">
+      <div id="dice1" class="dice">
+        <div class="pip"></div>
+        <div class="pip"></div>
+        <div class="pip"></div>
+        <div class="pip"></div>
+        <div class="pip"></div>
+        <div class="pip"></div>
+        <div class="pip"></div>
+        <div class="pip"></div>
+        <div class="pip"></div>
+      </div>
+      <div id="dice2" class="dice">
+        <div class="pip"></div>
+        <div class="pip"></div>
+        <div class="pip"></div>
+        <div class="pip"></div>
+        <div class="pip"></div>
+        <div class="pip"></div>
+        <div class="pip"></div>
+        <div class="pip"></div>
+        <div class="pip"></div>
+      </div>
+    </div>
+
+    <!-- Dev Card Reveal Container -->
+    <div id="dev-card-reveal" class="hidden">
+      <div class="card-inner">
+        <div class="card-front">
+          <div class="card-logo">?</div>
+          <div>Dev Card</div>
+        </div>
+        <div class="card-back">
+          <div id="revealed-card-title">Knight</div>
+          <div id="revealed-card-desc">Move the robber</div>
         </div>
       </div>
+    </div>
 
-      <!-- Left Panel: Log & Chat -->
-      <div id="left-panel">
-        <div id="game-log"></div>
-        <div id="chat-section">
-          <div id="chat-messages"></div>
-          <div id="chat-input-container">
-            <input
-              type="text"
-              id="chatInput"
-              placeholder="Type a message..."
-              maxlength="200"
-            />
-            <button id="sendChatBtn">Send</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Center: Turn Indicator & Start Button -->
-      <div
+    <!-- Start Game Button (Overlay) -->
+    <div
+      id="start-overlay"
+      style="
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        z-index: 100;
+        pointer-events: none;
+      "
+    >
+      <button
+        id="startGameBtn"
+        class="primary"
         style="
-          grid-area: center;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          pointer-events: none;
+          pointer-events: auto;
+          display: none;
+          font-size: 24px;
+          padding: 15px 30px;
         "
       >
-        <div id="turnIndicator">Waiting...</div>
-        <button
-          id="startGameBtn"
-          class="primary"
-          style="pointer-events: auto; display: none; margin-top: 20px"
-        >
-          Start Game
-        </button>
-      </div>
-
-      <!-- Right Panel: Actions -->
-      <div id="build-menu">
-        <button id="rollDiceBtn" class="action-btn" title="Roll Dice">
-          🎲
-        </button>
-
-        <button id="buildRoadBtn" class="action-btn">
-          🛣️
-          <span class="tooltip">Road (1 Wood, 1 Brick)</span>
-        </button>
-        <button id="buildSettlementBtn" class="action-btn">
-          🏠
-          <span class="tooltip"
-            >Settlement (1 Wood, 1 Brick, 1 Wheat, 1 Sheep)</span
-          >
-        </button>
-        <button id="buildCityBtn" class="action-btn">
-          🏰
-          <span class="tooltip">City (2 Wheat, 3 Ore)</span>
-        </button>
-        <button id="buyDevCardBtn" class="action-btn">
-          🃏
-          <span class="tooltip">Dev Card (1 Wheat, 1 Sheep, 1 Ore)</span>
-        </button>
-        <button id="tradeBtn" class="action-btn">
-          🤝
-          <span class="tooltip">Trade</span>
-        </button>
-        <button id="endTurnBtn" class="action-btn" style="background: #e74c3c">
-          🛑
-          <span class="tooltip">End Turn</span>
-        </button>
-      </div>
-
-      <!-- Bottom Bar: Hand -->
-      <div id="hand-container">
-        <!-- Cards injected here -->
-      </div>
+        Start Game
+      </button>
     </div>
 
     <script src="/socket.io/socket.io.js"></script>

@@ -31,6 +31,7 @@ let gameState = {
   turnCount: 0,
   hasPlayedDevCard: false,
   pendingDiscards: [], // List of socketIds who need to discard
+  resetVotes: [], // Array of socketIds who voted to reset
 };
 
 function isPlayersTurn(socketId) {
@@ -55,6 +56,39 @@ function checkWinCondition(socketId) {
     return true;
   }
   return false;
+}
+
+function resetGame() {
+  gameState.board = [];
+  gameState.buildings = [];
+  gameState.roads = [];
+  gameState.activeOffers = [];
+  gameState.phase = "WAITING_FOR_PLAYERS";
+  gameState.hasRolled = false;
+  gameState.setupItemsPlaced = { settlement: false, road: false };
+  gameState.turnDirection = 1;
+  gameState.turnCount = 0;
+  gameState.hasPlayedDevCard = false;
+  gameState.pendingDiscards = [];
+  gameState.resetVotes = [];
+  gameState.largestArmy = { owner: null, size: 0 };
+  gameState.longestRoad = { owner: null, length: 0 };
+
+  // Reset player state but keep them connected
+  Object.values(gameState.players).forEach((p) => {
+    p.resources = { wood: 0, brick: 0, sheep: 0, wheat: 0, ore: 0 };
+    p.devCards = [];
+    p.victoryPoints = 0;
+    p.armySize = 0;
+    p.longestRoad = 0;
+    p.supply = { roads: 15, settlements: 5, cities: 4 };
+    p.freeRoads = 0;
+  });
+
+  initBoard();
+  io.emit("init", gameState);
+  io.emit("gameReset");
+  io.emit("logMessage", "Game has been reset by vote!");
 }
 
 // Initialize a basic hex grid (simulating the standard layout)
@@ -1006,41 +1040,28 @@ io.on("connection", (socket) => {
   });
 
   socket.on("resetGame", () => {
-    gameState.board = [];
-    gameState.buildings = [];
-    gameState.roads = [];
-    gameState.activeOffers = [];
-    gameState.gypsy = { q: 0, r: 0 };
-    gameState.largestArmy = { owner: null, size: 0 };
-    gameState.longestRoad = { owner: null, length: 0 };
-    gameState.setupItemsPlaced = { settlement: false, road: false };
-    gameState.turnCount = 0;
-    gameState.hasPlayedDevCard = false;
-    gameState.pendingDiscards = [];
-    gameState.ports = [];
-    gameState.phase = "WAITING_FOR_PLAYERS";
-    gameState.turnOrder = [];
-    gameState.currentTurnIndex = 0;
-    gameState.hasRolled = false;
+    // Admin/Debug reset
+    resetGame();
+  });
 
-    // Keep existing players but reset their states
-    for (let pid in gameState.players) {
-      const p = gameState.players[pid];
-      p.resources = { wood: 0, brick: 0, sheep: 0, wheat: 0, ore: 0 };
-      p.victoryPoints = 0;
-      p.devCards = [];
-      p.armySize = 0;
-      p.freeRoads = 0;
-      p.supply = { settlements: 5, cities: 4, roads: 15 };
-      p.hasLongestRoad = false;
-      p.hasLargestArmy = false;
+  socket.on("requestReset", () => {
+    if (!gameState.resetVotes.includes(socket.id)) {
+      gameState.resetVotes.push(socket.id);
+
+      const connectedCount = Object.keys(gameState.players).length;
+      const voteCount = gameState.resetVotes.length;
+
+      io.emit(
+        "logMessage",
+        `${
+          gameState.players[socket.id].name
+        } voted to reset (${voteCount}/${connectedCount})`
+      );
+
+      if (voteCount >= connectedCount && connectedCount > 0) {
+        resetGame();
+      }
     }
-
-    initBoard();
-
-    io.emit("init", gameState);
-    io.emit("playerUpdate", gameState.players);
-    io.emit("logMessage", "Game Reset!");
   });
 
   socket.on("disconnect", () => {

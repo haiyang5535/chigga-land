@@ -27,8 +27,8 @@ const ctx = canvas.getContext("2d");
 const startBtn = document.getElementById("startGameBtn");
 const rollBtn = document.getElementById("rollDiceBtn");
 const endTurnBtn = document.getElementById("endTurnBtn");
-const turnIndicator = document.getElementById("turnIndicator");
-const logDiv = document.getElementById("gameLog");
+const turnIndicator = document.getElementById("turn-indicator");
+const logDiv = document.getElementById("game-log");
 const chatMessagesDiv = document.getElementById("chat-messages");
 const chatInput = document.getElementById("chatInput");
 const sendChatBtn = document.getElementById("sendChatBtn");
@@ -38,6 +38,7 @@ const activeOffersDiv = document.getElementById("activeOffers");
 startBtn.addEventListener("click", () => {
   console.log("Start Game button clicked");
   socket.emit("startGame");
+  document.getElementById("start-overlay").style.display = "none";
 });
 endTurnBtn.addEventListener("click", () => socket.emit("endTurn"));
 rollBtn.addEventListener("click", () => socket.emit("rollDice"));
@@ -94,6 +95,174 @@ chatInput.addEventListener("keypress", (e) => {
 const HEX_SIZE = 50;
 let CENTER_X = canvas.width / 2;
 let CENTER_Y = canvas.height / 2;
+let camera = { x: 0, y: 0, zoom: 1 };
+let isDragging = false;
+let lastMouseX = 0;
+let lastMouseY = 0;
+let hoverState = { vertex: null, edge: null };
+
+// --- CONSTANTS ---
+const PORT_DATA = [
+  { q: -1, r: -2, type: "Generic", vec: { x: 0, y: -1 } },
+  { q: 1, r: -3, type: "Sheep", vec: { x: 1, y: -1 } },
+  { q: 3, r: -3, type: "Generic", vec: { x: 1, y: 0 } },
+  { q: 3, r: -1, type: "Generic", vec: { x: 1, y: 1 } },
+  { q: 2, r: 1, type: "Brick", vec: { x: 0, y: 1 } },
+  { q: 0, r: 2, type: "Wood", vec: { x: -1, y: 1 } },
+  { q: -2, r: 1, type: "Generic", vec: { x: -1, y: 0 } },
+  { q: -3, r: 0, type: "Wheat", vec: { x: -1, y: -1 } },
+  { q: -3, r: -2, type: "Ore", vec: { x: 0, y: -1 } },
+];
+
+const OCEAN_SCENERY = [
+  { q: 4, r: -4, icon: "⛵️", size: 30 },
+  { q: -5, r: 1, icon: "🐳", size: 36 },
+  { q: 5, r: -1, icon: "🐙", size: 30 },
+  { q: -4, r: 4, icon: "🦀", size: 28 },
+  { q: 0, r: 5, icon: "🐠", size: 32 },
+];
+
+function drawPorts() {
+  const portIcons = {
+    Wood: "🌲",
+    Brick: "🧱",
+    Sheep: "🐑",
+    Wheat: "🌾",
+    Ore: "⛰️",
+  };
+
+  PORT_DATA.forEach((port) => {
+    const center = hexToPixel(port.q, port.r);
+    const rawVx = port.vec.x;
+    const rawVy = port.vec.y;
+    const vecLength = Math.hypot(rawVx, rawVy) || 1;
+    const dirX = rawVx / vecLength;
+    const dirY = rawVy / vecLength;
+    const perpX = -dirY;
+    const perpY = dirX;
+
+    const corners = getHexCorners(center);
+    const targetDotThreshold = 0.98;
+    let startPoint = null;
+    for (let i = 0; i < 6; i++) {
+      const c1 = corners[i];
+      const c2 = corners[(i + 1) % 6];
+      const midX = (c1.x + c2.x) / 2;
+      const midY = (c1.y + c2.y) / 2;
+      const edgeDirX = midX - center.x;
+      const edgeDirY = midY - center.y;
+      const edgeLen = Math.hypot(edgeDirX, edgeDirY) || 1;
+      const edgeUnitX = edgeDirX / edgeLen;
+      const edgeUnitY = edgeDirY / edgeLen;
+      const dot = edgeUnitX * dirX + edgeUnitY * dirY;
+      if (dot > targetDotThreshold) {
+        startPoint = { x: midX, y: midY };
+        break;
+      }
+    }
+
+    if (!startPoint) {
+      startPoint = {
+        x: center.x + dirX * HEX_SIZE * 0.88,
+        y: center.y + dirY * HEX_SIZE * 0.88,
+      };
+    }
+
+    const pierLength = HEX_SIZE * 0.65;
+    const endX = startPoint.x + dirX * pierLength;
+    const endY = startPoint.y + dirY * pierLength;
+    const innerOffset = HEX_SIZE * 0.12;
+    const innerX = startPoint.x - dirX * innerOffset;
+    const innerY = startPoint.y - dirY * innerOffset;
+    const halfWidth = HEX_SIZE * 0.22;
+    const tipWidth = HEX_SIZE * 0.16;
+
+    const innerLeft = {
+      x: innerX + perpX * (halfWidth * 0.9),
+      y: innerY + perpY * (halfWidth * 0.9),
+    };
+    const innerRight = {
+      x: innerX - perpX * (halfWidth * 0.9),
+      y: innerY - perpY * (halfWidth * 0.9),
+    };
+    const baseLeft = {
+      x: startPoint.x + perpX * halfWidth,
+      y: startPoint.y + perpY * halfWidth,
+    };
+    const baseRight = {
+      x: startPoint.x - perpX * halfWidth,
+      y: startPoint.y - perpY * halfWidth,
+    };
+    const tipLeft = {
+      x: endX + perpX * tipWidth,
+      y: endY + perpY * tipWidth,
+    };
+    const tipRight = {
+      x: endX - perpX * tipWidth,
+      y: endY - perpY * tipWidth,
+    };
+
+    ctx.save();
+    const plankGradient = ctx.createLinearGradient(innerX, innerY, endX, endY);
+    plankGradient.addColorStop(0, "#b57a42");
+    plankGradient.addColorStop(1, "#6d3f1b");
+    ctx.fillStyle = plankGradient;
+    ctx.beginPath();
+    ctx.moveTo(innerLeft.x, innerLeft.y);
+    ctx.lineTo(innerRight.x, innerRight.y);
+    ctx.lineTo(baseRight.x, baseRight.y);
+    ctx.lineTo(tipRight.x, tipRight.y);
+    ctx.lineTo(tipLeft.x, tipLeft.y);
+    ctx.lineTo(baseLeft.x, baseLeft.y);
+    ctx.closePath();
+    ctx.fill();
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = "rgba(0,0,0,0.35)";
+    ctx.stroke();
+
+    const pierPixels = Math.hypot(endX - startPoint.x, endY - startPoint.y);
+    for (let i = 0; i < 2; i++) {
+      const t = 0.35 + i * 0.25;
+      const postX = startPoint.x + dirX * pierPixels * t;
+      const postY = startPoint.y + dirY * pierPixels * t;
+      [1, -1].forEach((mult) => {
+        ctx.beginPath();
+        ctx.arc(
+          postX + perpX * halfWidth * 0.55 * mult,
+          postY + perpY * halfWidth * 0.55 * mult,
+          3,
+          0,
+          Math.PI * 2
+        );
+        ctx.fillStyle = "#4a2d16";
+        ctx.fill();
+      });
+    }
+
+    ctx.fillStyle = "white";
+    ctx.beginPath();
+    ctx.arc(endX, endY, 18, 0, 2 * Math.PI);
+    ctx.fill();
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = "#654321";
+    ctx.stroke();
+
+    const isGeneric = port.type === "Generic";
+    const icon = isGeneric ? "❓" : portIcons[port.type] || port.type;
+    const ratioText = isGeneric ? "3:1" : "2:1";
+
+    ctx.fillStyle = "black";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.font = isGeneric ? "bold 15px Arial" : "bold 20px Arial";
+    ctx.fillText(icon, endX, endY - 2);
+
+    ctx.font = "11px Arial";
+    ctx.fillText(ratioText, endX, endY + 13);
+    ctx.restore();
+  });
+}
+
 let localState = {
   board: [],
   buildings: [],
@@ -112,6 +281,59 @@ function resizeCanvas() {
 window.addEventListener("resize", resizeCanvas);
 resizeCanvas();
 
+// --- CAMERA CONTROLS ---
+canvas.addEventListener("mousedown", (e) => {
+  isDragging = true;
+  lastMouseX = e.clientX;
+  lastMouseY = e.clientY;
+});
+
+canvas.addEventListener("mousemove", (e) => {
+  if (isDragging) {
+    const dx = e.clientX - lastMouseX;
+    const dy = e.clientY - lastMouseY;
+    camera.x += dx;
+    camera.y += dy;
+    lastMouseX = e.clientX;
+    lastMouseY = e.clientY;
+    render();
+    return;
+  }
+
+  const worldPos = screenToWorld(e.clientX, e.clientY);
+  const snappedVertex = getNearestVertex(worldPos.x, worldPos.y);
+  const snappedEdge = !snappedVertex
+    ? getNearestEdge(worldPos.x, worldPos.y)
+    : null;
+
+  hoverState = { vertex: snappedVertex, edge: snappedEdge };
+  render();
+});
+
+canvas.addEventListener("mouseleave", () => {
+  hoverState = { vertex: null, edge: null };
+  render();
+});
+
+canvas.addEventListener("mouseup", () => {
+  isDragging = false;
+});
+
+canvas.addEventListener(
+  "wheel",
+  (e) => {
+    e.preventDefault();
+    const zoomSpeed = 0.1;
+    if (e.deltaY < 0) {
+      camera.zoom = Math.min(camera.zoom + zoomSpeed, 2.0);
+    } else {
+      camera.zoom = Math.max(camera.zoom - zoomSpeed, 0.5);
+    }
+    render();
+  },
+  { passive: false }
+);
+
 // --- UI UPDATES ---
 function updateUI() {
   if (localState.phase === "WAITING_FOR_PLAYERS") {
@@ -121,14 +343,17 @@ function updateUI() {
     const playerIds = Object.keys(localState.players);
     if (playerIds.length > 0 && playerIds[0] === socket.id) {
       startBtn.style.display = "block";
+      document.getElementById("start-overlay").style.display = "block";
     } else {
       startBtn.style.display = "none";
+      document.getElementById("start-overlay").style.display = "none";
     }
 
     rollBtn.disabled = true;
     endTurnBtn.disabled = true;
   } else {
     startBtn.style.display = "none";
+    document.getElementById("start-overlay").style.display = "none";
   }
 
   if (
@@ -136,16 +361,22 @@ function updateUI() {
     localState.phase.startsWith("SETUP")
   ) {
     const currentPlayerId = localState.turnOrder[localState.currentTurnIndex];
+    const currentPlayer = localState.players[currentPlayerId];
     const isMyTurn = currentPlayerId === socket.id;
 
-    let statusText = isMyTurn ? "YOUR TURN" : "Waiting for opponent...";
+    let statusText = isMyTurn
+      ? "YOUR TURN!"
+      : `Waiting for ${currentPlayer ? currentPlayer.name : "Opponent"}...`;
+
     if (
       localState.phase === "SETUP_ROUND_1" ||
       localState.phase === "SETUP_ROUND_2"
     ) {
       statusText = isMyTurn
         ? "YOUR TURN (Place Settlement & Road)"
-        : "Waiting for opponent (Setup)...";
+        : `Waiting for ${
+            currentPlayer ? currentPlayer.name : "Opponent"
+          } (Setup)...`;
       if (localState.phase === "SETUP_ROUND_1")
         statusText += " [Snake Draft ->]";
       if (localState.phase === "SETUP_ROUND_2")
@@ -159,7 +390,10 @@ function updateUI() {
     }
 
     turnIndicator.innerText = statusText;
-    turnIndicator.style.color = isMyTurn ? "lime" : "white";
+    turnIndicator.style.color = isMyTurn ? "var(--accent-green)" : "white";
+    turnIndicator.style.textShadow = isMyTurn
+      ? "0 0 10px var(--accent-green)"
+      : "none";
   } else if (localState.phase === "GAME_OVER") {
     turnIndicator.innerText = "GAME OVER";
     rollBtn.disabled = true;
@@ -201,6 +435,13 @@ document.getElementById("playAgainBtn").addEventListener("click", () => {
   overlay.style.display = "none";
 });
 
+document.getElementById("resetGameBtn").addEventListener("click", () => {
+  const btn = document.getElementById("resetGameBtn");
+  btn.innerText = "Waiting...";
+  btn.disabled = true;
+  socket.emit("requestReset");
+});
+
 socket.on("gameOver", (data) => {
   document.getElementById(
     "winnerText"
@@ -209,12 +450,27 @@ socket.on("gameOver", (data) => {
 });
 
 function updateOffers() {
-  activeOffersDiv.innerHTML = "";
+  const list = document.getElementById("trade-feed");
+  const panel = document.getElementById("trade-sidebar");
+
+  if (!list || !panel) return;
+
+  list.innerHTML = "";
+
+  panel.style.display = "block";
+
+  if (localState.activeOffers.length === 0) {
+    list.innerHTML =
+      '<div class="trade-item trade-empty">No active trades</div>';
+    return;
+  }
+
   localState.activeOffers.forEach((o) => {
     const div = document.createElement("div");
-    div.style.border = "1px solid white";
-    div.style.margin = "2px";
-    div.style.padding = "2px";
+    div.className = "trade-item";
+
+    const fromPlayer = localState.players[o.from];
+    const name = fromPlayer ? fromPlayer.name : "Unknown";
 
     const offerText = Object.entries(o.offer)
       .map(([k, v]) => `${v} ${k}`)
@@ -223,7 +479,12 @@ function updateOffers() {
       .map(([k, v]) => `${v} ${k}`)
       .join(", ");
 
-    div.innerText = `Offer: ${offerText} -> Want: ${reqText}`;
+    div.innerHTML = `
+        <div><strong>${name}</strong> wants:</div>
+        <div style="color: #e74c3c">${reqText}</div>
+        <div>Offers:</div>
+        <div style="color: #2ecc71">${offerText}</div>
+    `;
 
     if (o.from === socket.id) {
       const cancelBtn = document.createElement("button");
@@ -237,8 +498,9 @@ function updateOffers() {
       div.appendChild(acceptBtn);
     }
 
-    activeOffersDiv.appendChild(div);
+    list.appendChild(div);
   });
+  console.log("Trades updated:", localState.activeOffers);
 }
 
 // --- SOCKET EVENTS ---
@@ -278,7 +540,22 @@ socket.on("requestDiscard", (data) => {
   socket.emit("discardResources", { resources: toDiscard });
 });
 
+let lastDevCardCount = 0;
+
 socket.on("playerUpdate", (players) => {
+  // Check for new dev cards
+  const myId = socket.id;
+  if (players[myId]) {
+    const myPlayer = players[myId];
+    const currentCount = (myPlayer.devCards || []).length;
+    if (currentCount > lastDevCardCount) {
+      const newCard = myPlayer.devCards[currentCount - 1];
+      const type = newCard.type || newCard;
+      showDevCardReveal(type);
+    }
+    lastDevCardCount = currentCount;
+  }
+
   localState.players = players; // Store for UI logic
   updateUI(); // Re-check host status
 
@@ -292,7 +569,7 @@ socket.on("playerUpdate", (players) => {
       badge.style.borderLeft = `5px solid ${p.color}`;
       badge.innerHTML = `
                 <span>${p.name}</span>
-                <span style="color: gold;">${p.victoryPoints} VP</span>
+                <span style="color: gold;">${p.victoryPoints} Social Cred</span>
                 <span>🃏 ${Object.values(p.resources).reduce(
                   (a, b) => a + b,
                   0
@@ -303,11 +580,10 @@ socket.on("playerUpdate", (players) => {
     });
   }
 
-  const myId = socket.id;
   if (players[myId]) {
     const myPlayer = players[myId];
     const vpBar = document.getElementById("vp-bar");
-    if (vpBar) vpBar.innerText = `${myPlayer.victoryPoints} / 10 VP`;
+    if (vpBar) vpBar.innerText = `${myPlayer.victoryPoints} / 10 Social Cred`;
 
     const handContainer = document.getElementById("hand-container");
     if (handContainer) {
@@ -391,12 +667,125 @@ socket.on("roadPlaced", (road) => {
   render();
 });
 
-socket.on("diceRolled", (roll) => {});
+socket.on("diceRolled", (roll) => {
+  showDiceAnimation(roll);
+
+  setTimeout(() => {
+    const myId = socket.id;
+    const myBuildings = localState.buildings.filter((b) => b.owner === myId);
+
+    localState.board.forEach((hex) => {
+      if (
+        hex.number === roll &&
+        hex.resource !== "desert" &&
+        (hex.q !== localState.gypsy.q || hex.r !== localState.gypsy.r)
+      ) {
+        const center = hexToPixel(hex.q, hex.r);
+
+        myBuildings.forEach((b) => {
+          const parts = b.vertexId.split(",").map(Number);
+          const vQ = parts[0],
+            vR = parts[1],
+            vD = parts[2];
+
+          const vHexCenter = hexToPixel(vQ, vR);
+          const angle_deg = 60 * vD - 30;
+          const angle_rad = (Math.PI / 180) * angle_deg;
+          const vx = vHexCenter.x + HEX_SIZE * Math.cos(angle_rad);
+          const vy = vHexCenter.y + HEX_SIZE * Math.sin(angle_rad);
+
+          const dist = Math.sqrt(
+            Math.pow(vx - center.x, 2) + Math.pow(vy - center.y, 2)
+          );
+
+          if (Math.abs(dist - HEX_SIZE) < 5) {
+            const amount = b.type === "city" ? 2 : 1;
+            animateResourceGain(hex.resource, amount, center.x, center.y);
+          }
+        });
+      }
+    });
+  }, 800);
+});
+
+// --- HOOD LOGS & VISUAL JUICE ---
+
+const SLANG_DICT = {
+  turnStart: (name) => `It's ${name}'s turn to cook.`,
+  roll: (name, num) => `${name} rolled a ${num}. We eating good.`,
+  roll7: (name) => `OH SH*T! ${name} called the Opps!`,
+  buildRoad: (name) => `${name} is expanding the block.`,
+  buildSettlement: (name) => `${name} set up a trap house.`,
+  buildCity: (name) => `${name} upgraded to the Penthouse.`,
+  steal: (name, victim) => `${name} just finessed a card from ${victim}.`,
+  win: (name) => `${name} is the King of the Hood!`,
+};
+
+function showToast(msg) {
+  const toast = document.createElement("div");
+  toast.className = "toast";
+  toast.innerText = msg;
+  document.body.appendChild(toast);
+
+  // Trigger reflow
+  toast.offsetHeight;
+
+  toast.style.opacity = "1";
+  toast.style.transform = "translate(-50%, -50%) scale(1)";
+
+  setTimeout(() => {
+    toast.style.opacity = "0";
+    toast.style.transform = "translate(-50%, -60%) scale(0.9)";
+    setTimeout(() => toast.remove(), 500);
+  }, 2000);
+}
+
+function logGameEvent(msg, type = "info") {
+  let slangMsg = msg;
+
+  // Regex Matching for Slang Translation
+  const turnMatch = msg.match(/^It is (.+)'s turn\.$/);
+  if (turnMatch) slangMsg = SLANG_DICT.turnStart(turnMatch[1]);
+
+  const rollMatch = msg.match(/^(.+) rolled a (\d+)\.$/);
+  if (rollMatch) {
+    const num = parseInt(rollMatch[2]);
+    if (num === 7) {
+      slangMsg = SLANG_DICT.roll7(rollMatch[1]);
+      document.body.classList.add("shake");
+      setTimeout(() => document.body.classList.remove("shake"), 500);
+    } else {
+      slangMsg = SLANG_DICT.roll(rollMatch[1], num);
+    }
+  }
+
+  const roadMatch = msg.match(/^(.+) built a road\.$/);
+  if (roadMatch) slangMsg = SLANG_DICT.buildRoad(roadMatch[1]);
+
+  const settlementMatch = msg.match(/^(.+) built a settlement\.$/);
+  if (settlementMatch)
+    slangMsg = SLANG_DICT.buildSettlement(settlementMatch[1]);
+
+  const cityMatch = msg.match(/^(.+) upgraded to a city\.$/);
+  if (cityMatch) slangMsg = SLANG_DICT.buildCity(cityMatch[1]);
+
+  const stealMatch = msg.match(/^(.+) stole a card from (.+)\.$/);
+  if (stealMatch) slangMsg = SLANG_DICT.steal(stealMatch[1], stealMatch[2]);
+
+  const winMatch = msg.match(/^GAME OVER! (.+) WINS!$/);
+  if (winMatch) slangMsg = SLANG_DICT.win(winMatch[1]);
+
+  const p = document.createElement("div");
+  p.innerText = slangMsg;
+  p.style.background = "rgba(0,0,0,0.2)";
+  p.style.padding = "4px 8px";
+  p.style.borderRadius = "4px";
+  p.style.marginBottom = "4px";
+  logDiv.prepend(p);
+}
 
 socket.on("logMessage", (msg) => {
-  const p = document.createElement("div");
-  p.innerText = msg;
-  logDiv.prepend(p);
+  logGameEvent(msg);
 });
 
 socket.on("chatMessage", (data) => {
@@ -419,6 +808,95 @@ socket.on("chatMessage", (data) => {
   // Auto-scroll to bottom
   chatMessagesDiv.scrollTop = chatMessagesDiv.scrollHeight;
 });
+
+// --- VISUAL EFFECTS HELPERS ---
+
+function showDiceAnimation(roll) {
+  const container = document.getElementById("dice-container");
+  const dice1 = document.getElementById("dice1");
+  const dice2 = document.getElementById("dice2");
+
+  container.classList.remove("hidden");
+  dice1.className = "dice shake";
+  dice2.className = "dice shake";
+
+  const interval = setInterval(() => {
+    const r1 = Math.floor(Math.random() * 6) + 1;
+    const r2 = Math.floor(Math.random() * 6) + 1;
+    dice1.className = `dice shake face-${r1}`;
+    dice2.className = `dice shake face-${r2}`;
+  }, 100);
+
+  setTimeout(() => {
+    clearInterval(interval);
+    let d1 = Math.floor(roll / 2);
+    let d2 = roll - d1;
+    if (d1 === 0) {
+      d1 = 1;
+      d2 = roll - 1;
+    }
+
+    dice1.className = `dice face-${d1}`;
+    dice2.className = `dice face-${d2}`;
+
+    setTimeout(() => {
+      container.classList.add("hidden");
+    }, 1000);
+  }, 800);
+}
+
+function animateResourceGain(type, amount, startX, startY) {
+  if (!startX) startX = window.innerWidth / 2;
+  if (!startY) startY = window.innerHeight / 2;
+
+  const destX = window.innerWidth / 2;
+  const destY = window.innerHeight - 50;
+
+  for (let i = 0; i < amount; i++) {
+    setTimeout(() => {
+      const el = document.createElement("div");
+      el.className = `floating-resource res-${type}`;
+      el.innerText = type.charAt(0).toUpperCase();
+      el.style.left = `${startX}px`;
+      el.style.top = `${startY}px`;
+      document.body.appendChild(el);
+
+      // Force reflow
+      el.offsetWidth;
+
+      el.style.left = `${destX}px`;
+      el.style.top = `${destY}px`;
+      el.style.opacity = "0";
+
+      setTimeout(() => {
+        el.remove();
+      }, 800);
+    }, i * 100);
+  }
+}
+
+function showDevCardReveal(type) {
+  const container = document.getElementById("dev-card-reveal");
+  const title = document.getElementById("revealed-card-title");
+  const desc = document.getElementById("revealed-card-desc");
+
+  title.innerText = type.toUpperCase();
+
+  let description = "";
+  if (type === "knight") description = "Move the robber";
+  else if (type === "vp") description = "1 Victory Point";
+  else if (type === "roadBuilding") description = "Build 2 roads";
+  else if (type === "yearOfPlenty") description = "Take 2 resources";
+  else if (type === "monopoly") description = "Monopolize a resource";
+
+  desc.innerText = description;
+
+  container.classList.remove("hidden");
+
+  setTimeout(() => {
+    container.classList.add("hidden");
+  }, 2000);
+}
 
 // --- MATH & RENDER ---
 function hexToPixel(q, r) {
@@ -512,31 +990,115 @@ function drawHex(q, r, resource, number) {
     );
   }
   ctx.closePath();
-  const colors = {
-    wood: "#228B22",
-    brick: "#B22222",
-    sheep: "#90EE90",
-    wheat: "#DAA520",
-    ore: "#708090",
-    desert: "#F4A460",
-  };
-  ctx.fillStyle = colors[resource] || "#FFF";
+
+  // Gradients
+  const gradient = ctx.createRadialGradient(
+    center.x,
+    center.y,
+    10,
+    center.x,
+    center.y,
+    HEX_SIZE
+  );
+
+  if (resource === "wood") {
+    gradient.addColorStop(0, "#2ecc71");
+    gradient.addColorStop(1, "#27ae60");
+  } else if (resource === "brick") {
+    gradient.addColorStop(0, "#e74c3c");
+    gradient.addColorStop(1, "#c0392b");
+  } else if (resource === "sheep") {
+    gradient.addColorStop(0, "#a9dfbf");
+    gradient.addColorStop(1, "#27ae60"); // Light green to dark
+  } else if (resource === "wheat") {
+    gradient.addColorStop(0, "#f1c40f");
+    gradient.addColorStop(1, "#f39c12");
+  } else if (resource === "ore") {
+    gradient.addColorStop(0, "#95a5a6");
+    gradient.addColorStop(1, "#7f8c8d");
+  } else if (resource === "desert") {
+    gradient.addColorStop(0, "#f39c12");
+    gradient.addColorStop(1, "#d35400");
+  } else {
+    gradient.addColorStop(0, "#fff");
+    gradient.addColorStop(1, "#ccc");
+  }
+
+  ctx.fillStyle = gradient;
   ctx.fill();
+  ctx.strokeStyle = "rgba(0,0,0,0.2)";
+  ctx.lineWidth = 2;
   ctx.stroke();
+  ctx.lineWidth = 1;
+
+  // Resource Emoji Background
+  const emojis = {
+    wood: "🌲",
+    brick: "🧱",
+    sheep: "🐑",
+    wheat: "🌾",
+    ore: "⛰️",
+    desert: "🌵",
+  };
+
+  if (emojis[resource]) {
+    ctx.save();
+    ctx.globalAlpha = 0.85;
+    ctx.font = "48px Arial";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.shadowColor = "rgba(0, 0, 0, 0.35)";
+    ctx.shadowBlur = 6;
+    ctx.shadowOffsetY = 2;
+    ctx.fillText(emojis[resource], center.x, center.y - 5);
+    ctx.restore();
+  }
+
   if (resource !== "desert") {
     ctx.fillStyle = "white";
     ctx.beginPath();
-    ctx.arc(center.x, center.y, 15, 0, 2 * Math.PI);
+    ctx.arc(center.x, center.y + 18, 15, 0, 2 * Math.PI);
     ctx.fill();
+    ctx.strokeStyle = "#333";
     ctx.stroke();
-    ctx.fillStyle = "black";
+
+    // Number Color (Red for 6 and 8)
+    const isRed = number === 6 || number === 8;
+    ctx.fillStyle = isRed ? "#e74c3c" : "black";
+
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.font = "bold 12px Arial";
-    ctx.fillText(number, center.x, center.y);
+    ctx.font = "bold 14px Arial";
+    ctx.fillText(number, center.x, center.y + 16);
+
+    // Probability Dots
+    const dotsCount =
+      {
+        2: 1,
+        12: 1,
+        3: 2,
+        11: 2,
+        4: 3,
+        10: 3,
+        5: 4,
+        9: 4,
+        6: 5,
+        8: 5,
+      }[number] || 0;
+
+    const dotSize = 2;
+    const dotSpacing = 4;
+    const totalWidth = (dotsCount - 1) * dotSpacing;
+    let startX = center.x - totalWidth / 2;
+
+    ctx.fillStyle = isRed ? "#e74c3c" : "black";
+    for (let i = 0; i < dotsCount; i++) {
+      ctx.beginPath();
+      ctx.arc(startX + i * dotSpacing, center.y + 23, dotSize, 0, 2 * Math.PI);
+      ctx.fill();
+    }
   }
 }
-
 function drawBuilding(vertexId, color, type) {
   const parts = vertexId.split(",").map(Number);
   const q = parts[0],
@@ -585,10 +1147,37 @@ function drawGypsy() {
   ctx.arc(center.x, center.y, 15, 0, 2 * Math.PI);
   ctx.fill();
   ctx.fillStyle = "white";
-  ctx.font = "12px Arial";
+  ctx.font = "20px Arial";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText("G", center.x, center.y);
+  ctx.fillText("🧙", center.x, center.y);
+}
+
+function drawOceanDecorations() {
+  ctx.save();
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+
+  OCEAN_SCENERY.forEach((item) => {
+    const pos = hexToPixel(item.q, item.r);
+    ctx.font = `${item.size}px Arial`;
+    ctx.globalAlpha = 0.9;
+    ctx.shadowColor = "rgba(0,0,0,0.4)";
+    ctx.shadowBlur = 8;
+    ctx.fillText(item.icon, pos.x, pos.y);
+  });
+
+  ctx.globalAlpha = 0.3;
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = "rgba(255,255,255,0.35)";
+  ctx.lineWidth = 1.5;
+  for (let i = 0; i < 3; i++) {
+    ctx.beginPath();
+    ctx.arc(CENTER_X, CENTER_Y, HEX_SIZE * (4 + i * 1.3), 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  ctx.restore();
 }
 
 function getVertexPixel(vertexId) {
@@ -605,93 +1194,15 @@ function getVertexPixel(vertexId) {
   };
 }
 
-function drawPorts() {
-  if (!localState.ports || localState.ports.length === 0) return;
-
-  localState.ports.forEach((port) => {
-    const v1 = port.vertexIds[0];
-    const v2 = port.vertexIds[1];
-
-    const p1 = getVertexPixel(v1);
-    const p2 = getVertexPixel(v2);
-
-    if (!p1 || !p2) return;
-
-    // Edge Midpoint (Mx, My)
-    const mx = (p1.x + p2.x) / 2;
-    const my = (p1.y + p2.y) / 2;
-
-    // Find the Hex Center (Cx, Cy)
-    let cx = mx;
-    let cy = my;
-
-    // Find hex that shares this edge
-    const hex = localState.board.find((h) => {
-      for (let i = 0; i < 6; i++) {
-        const id1 = Shared.getCanonicalVertex(h.q, h.r, i);
-        const id2 = Shared.getCanonicalVertex(h.q, h.r, (i + 1) % 6);
-        if ((id1 === v1 && id2 === v2) || (id1 === v2 && id2 === v1)) {
-          return true;
-        }
-      }
-      return false;
-    });
-
-    if (hex) {
-      const center = hexToPixel(hex.q, hex.r);
-      cx = center.x;
-      cy = center.y;
-    }
-
-    // Vector V = (Mx - Cx, My - Cy)
-    const vx = mx - cx;
-    const vy = my - cy;
-
-    // Normalize and Scale - position port farther out for visibility
-    const len = Math.sqrt(vx * vx + vy * vy) || 1;
-    const scale = HEX_SIZE * 0.8; // Increased from 0.6 to 0.8
-    const dx = mx + (vx / len) * scale;
-    const dy = my + (vy / len) * scale;
-
-    // Draw Stick (thicker and more visible)
-    ctx.strokeStyle = "#654321";
-    ctx.lineWidth = 6;
-    ctx.beginPath();
-    ctx.moveTo(mx, my);
-    ctx.lineTo(dx, dy);
-    ctx.stroke();
-
-    // Draw Platform (larger and more prominent)
-    ctx.fillStyle = "#F5DEB3"; // Wheat color for port platform
-    ctx.strokeStyle = "#654321"; // Darker brown
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.arc(dx, dy, 20, 0, 2 * Math.PI); // Increased from 15 to 20
-    ctx.fill();
-    ctx.stroke();
-
-    // Add port icon/emoji based on type
-    const portIcons = {
-      wood: "🌲",
-      brick: "🧱",
-      sheep: "🐑",
-      wheat: "🌾",
-      ore: "🪨",
-      "3:1": "3:1",
-    };
-
-    // Text
-    ctx.fillStyle = "#000000";
-    ctx.font = "bold 12px Arial"; // Increased font size
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    const displayText = portIcons[port.type] || port.type;
-    ctx.fillText(displayText, dx, dy);
-  });
-}
-
 function render() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  ctx.save();
+  ctx.translate(camera.x + canvas.width / 2, camera.y + canvas.height / 2);
+  ctx.scale(camera.zoom, camera.zoom);
+  ctx.translate(-canvas.width / 2, -canvas.height / 2);
+
+  drawOceanDecorations();
   localState.board.forEach((hex) =>
     drawHex(hex.q, hex.r, hex.resource, hex.number)
   );
@@ -701,12 +1212,43 @@ function render() {
     drawBuilding(b.vertexId, b.color, b.type)
   );
   drawGypsy();
+
+  if (hoverState.vertex) {
+    ctx.fillStyle = "rgba(255, 255, 255, 0.5)";
+    ctx.beginPath();
+    ctx.arc(hoverState.vertex.x, hoverState.vertex.y, 10, 0, 2 * Math.PI);
+    ctx.fill();
+  } else if (hoverState.edge) {
+    ctx.fillStyle = "rgba(255, 255, 255, 0.5)";
+    ctx.beginPath();
+    ctx.arc(hoverState.edge.x, hoverState.edge.y, 10, 0, 2 * Math.PI);
+    ctx.fill();
+  }
+
+  ctx.restore();
+}
+
+// Helper to transform mouse coordinates to world coordinates
+function screenToWorld(sx, sy) {
+  // 1. Center Offset
+  let x = sx - canvas.width / 2;
+  let y = sy - canvas.height / 2;
+  // 2. Un-Zoom
+  x /= camera.zoom;
+  y /= camera.zoom;
+  // 3. Un-Pan
+  x -= camera.x;
+  y -= camera.y;
+  // 4. Restore Center
+  return { x: x + canvas.width / 2, y: y + canvas.height / 2 };
 }
 
 canvas.addEventListener("click", (e) => {
-  const rect = canvas.getBoundingClientRect();
-  const x = e.clientX - rect.left;
-  const y = e.clientY - rect.top;
+  if (isDragging) return; // Don't click if we just dragged
+
+  const worldPos = screenToWorld(e.clientX, e.clientY);
+  const x = worldPos.x;
+  const y = worldPos.y;
 
   if (localState.phase === "ROBBER_PLACEMENT") {
     let clickedHex = null;
@@ -714,7 +1256,8 @@ canvas.addEventListener("click", (e) => {
       const center = hexToPixel(hex.q, hex.r);
       const dx = x - center.x;
       const dy = y - center.y;
-      if (Math.sqrt(dx * dx + dy * dy) < HEX_SIZE / 2) {
+      if (Math.sqrt(dx * dx + dy * dy) < HEX_SIZE * 0.8) {
+        // Increased hit area slightly
         clickedHex = hex;
       }
     });
@@ -746,22 +1289,30 @@ canvas.addEventListener("click", (e) => {
   }
 });
 
-canvas.addEventListener("mousemove", (e) => {
-  const rect = canvas.getBoundingClientRect();
-  const x = e.clientX - rect.left;
-  const y = e.clientY - rect.top;
-  const snapped = getNearestVertex(x, y);
-  const snappedEdge = getNearestEdge(x, y);
+// --- GAME RESET ---
+socket.on("gameReset", () => {
+  localState = {
+    board: [],
+    buildings: [],
+    roads: [],
+    activeOffers: [],
+    players: {},
+  };
+  camera = { x: 0, y: 0, zoom: 1 };
+  hoverState = { vertex: null, edge: null };
+
+  const btn = document.getElementById("resetGameBtn");
+  btn.innerText = "🔄 Reset";
+  btn.disabled = false;
+
+  document.getElementById("game-log").innerHTML = "";
+  const tradeSidebar = document.getElementById("trade-sidebar");
+  const tradeFeed = document.getElementById("trade-feed");
+  if (tradeSidebar) tradeSidebar.style.display = "block";
+  if (tradeFeed)
+    tradeFeed.innerHTML =
+      '<div class="trade-item trade-empty">No active trades</div>';
+
   render();
-  if (snapped) {
-    ctx.fillStyle = "rgba(255, 255, 255, 0.5)";
-    ctx.beginPath();
-    ctx.arc(snapped.x, snapped.y, 10, 0, 2 * Math.PI);
-    ctx.fill();
-  } else if (snappedEdge) {
-    ctx.fillStyle = "rgba(255, 255, 255, 0.5)";
-    ctx.beginPath();
-    ctx.arc(snappedEdge.x, snappedEdge.y, 10, 0, 2 * Math.PI);
-    ctx.fill();
-  }
+  updateUI();
 });

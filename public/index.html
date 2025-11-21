@@ -1,109 +1,197 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
+  <head>
+    <meta charset="UTF-8" />
     <title>Chigga Land</title>
-    <link rel="stylesheet" href="style.css">
-</head>
-<body>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
     <canvas id="gameCanvas"></canvas>
 
     <div id="joinModal" class="modal">
-        <div class="modal-content">
-            <h1>Welcome to Chigga Land</h1>
-            <input type="text" id="nicknameInput" placeholder="Enter your name">
-            <br>
-            <button id="joinGameBtn" class="primary">Join Game</button>
-        </div>
+      <div class="modal-content">
+        <h1>Welcome to Chigga Land</h1>
+        <input type="text" id="nicknameInput" placeholder="Enter your name" />
+        <br />
+        <button id="joinGameBtn" class="primary">Join Game</button>
+      </div>
     </div>
 
     <div id="tradeModal" class="modal hidden">
-        <div class="modal-content">
-            <h2>Trading</h2>
-            <div style="display: flex; justify-content: space-around; margin-bottom: 20px;">
-                <div>
-                    <h3>Offer</h3>
-                    <select id="offerRes"><option>wood</option><option>brick</option><option>sheep</option><option>wheat</option><option>ore</option></select>
-                    <input type="number" id="offerAmt" value="1" min="1" style="width: 50px;">
-                </div>
-                <div>
-                    <h3>Request</h3>
-                    <select id="reqRes"><option>wood</option><option>brick</option><option>sheep</option><option>wheat</option><option>ore</option></select>
-                    <input type="number" id="reqAmt" value="1" min="1" style="width: 50px;">
-                </div>
-            </div>
-            <button id="postTradeBtn" class="primary">Post Offer</button>
-            <button onclick="document.getElementById('tradeModal').classList.add('hidden')" style="margin-left: 10px;">Close</button>
-            
-            <div id="activeOffers" style="margin-top: 20px; text-align: left; max-height: 150px; overflow-y: auto;"></div>
-            
-            <hr style="margin: 20px 0; border-color: rgba(255,255,255,0.1);">
-            
-            <h3>Bank Trade (4:1)</h3>
-            <select id="bankGive"><option>wood</option><option>brick</option><option>sheep</option><option>wheat</option><option>ore</option></select>
-            <span>&rarr;</span>
-            <select id="bankGet"><option>wood</option><option>brick</option><option>sheep</option><option>wheat</option><option>ore</option></select>
-            <button id="bankTradeBtn">Trade</button>
+      <div class="modal-content">
+        <h2>Trading</h2>
+        <div
+          style="
+            display: flex;
+            justify-content: space-around;
+            margin-bottom: 20px;
+          "
+        >
+          <div>
+            <h3>Offer</h3>
+            <select id="offerRes">
+              <option>wood</option>
+              <option>brick</option>
+              <option>sheep</option>
+              <option>wheat</option>
+              <option>ore</option>
+            </select>
+            <input
+              type="number"
+              id="offerAmt"
+              value="1"
+              min="1"
+              style="width: 50px"
+            />
+          </div>
+          <div>
+            <h3>Request</h3>
+            <select id="reqRes">
+              <option>wood</option>
+              <option>brick</option>
+              <option>sheep</option>
+              <option>wheat</option>
+              <option>ore</option>
+            </select>
+            <input
+              type="number"
+              id="reqAmt"
+              value="1"
+              min="1"
+              style="width: 50px"
+            />
+          </div>
         </div>
+        <button id="postTradeBtn" class="primary">Post Offer</button>
+        <button
+          onclick="document.getElementById('tradeModal').classList.add('hidden')"
+          style="margin-left: 10px"
+        >
+          Close
+        </button>
+
+        <div
+          id="activeOffers"
+          style="
+            margin-top: 20px;
+            text-align: left;
+            max-height: 150px;
+            overflow-y: auto;
+          "
+        ></div>
+
+        <hr style="margin: 20px 0; border-color: rgba(255, 255, 255, 0.1)" />
+
+        <h3>Bank Trade (4:1)</h3>
+        <select id="bankGive">
+          <option>wood</option>
+          <option>brick</option>
+          <option>sheep</option>
+          <option>wheat</option>
+          <option>ore</option>
+        </select>
+        <span>&rarr;</span>
+        <select id="bankGet">
+          <option>wood</option>
+          <option>brick</option>
+          <option>sheep</option>
+          <option>wheat</option>
+          <option>ore</option>
+        </select>
+        <button id="bankTradeBtn">Trade</button>
+      </div>
     </div>
 
     <div id="ui-layer">
-        <!-- Top Bar -->
-        <div id="top-bar">
-            <div id="logo">Chigga Land</div>
-            <div id="vp-bar">0 VP</div>
-            <div id="player-list">
-                <!-- Player badges injected here -->
-            </div>
+      <!-- Top Bar -->
+      <div id="top-bar">
+        <div id="logo">Chigga Land</div>
+        <div id="vp-bar">0 VP</div>
+        <div id="player-list">
+          <!-- Player badges injected here -->
         </div>
+      </div>
 
-        <!-- Left Panel: Log -->
+      <!-- Left Panel: Log & Chat -->
+      <div id="left-panel">
         <div id="game-log"></div>
-
-        <!-- Center: Turn Indicator & Start Button -->
-        <div style="grid-area: center; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none;">
-            <div id="turnIndicator">Waiting...</div>
-            <button id="startGameBtn" class="primary" style="pointer-events: auto; display: none; margin-top: 20px;">Start Game</button>
+        <div id="chat-section">
+          <div id="chat-messages"></div>
+          <div id="chat-input-container">
+            <input
+              type="text"
+              id="chatInput"
+              placeholder="Type a message..."
+              maxlength="200"
+            />
+            <button id="sendChatBtn">Send</button>
+          </div>
         </div>
+      </div>
 
-        <!-- Right Panel: Actions -->
-        <div id="build-menu">
-            <button id="rollDiceBtn" class="action-btn" title="Roll Dice">🎲</button>
-            
-            <button id="buildRoadBtn" class="action-btn">
-                🛣️
-                <span class="tooltip">Road (1 Wood, 1 Brick)</span>
-            </button>
-            <button id="buildSettlementBtn" class="action-btn">
-                🏠
-                <span class="tooltip">Settlement (1 Wood, 1 Brick, 1 Wheat, 1 Sheep)</span>
-            </button>
-            <button id="buildCityBtn" class="action-btn">
-                🏰
-                <span class="tooltip">City (2 Wheat, 3 Ore)</span>
-            </button>
-            <button id="buyDevCardBtn" class="action-btn">
-                🃏
-                <span class="tooltip">Dev Card (1 Wheat, 1 Sheep, 1 Ore)</span>
-            </button>
-            <button id="tradeBtn" class="action-btn">
-                🤝
-                <span class="tooltip">Trade</span>
-            </button>
-            <button id="endTurnBtn" class="action-btn" style="background: #e74c3c;">
-                🛑
-                <span class="tooltip">End Turn</span>
-            </button>
-        </div>
+      <!-- Center: Turn Indicator & Start Button -->
+      <div
+        style="
+          grid-area: center;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          pointer-events: none;
+        "
+      >
+        <div id="turnIndicator">Waiting...</div>
+        <button
+          id="startGameBtn"
+          class="primary"
+          style="pointer-events: auto; display: none; margin-top: 20px"
+        >
+          Start Game
+        </button>
+      </div>
 
-        <!-- Bottom Bar: Hand -->
-        <div id="hand-container">
-            <!-- Cards injected here -->
-        </div>
+      <!-- Right Panel: Actions -->
+      <div id="build-menu">
+        <button id="rollDiceBtn" class="action-btn" title="Roll Dice">
+          🎲
+        </button>
+
+        <button id="buildRoadBtn" class="action-btn">
+          🛣️
+          <span class="tooltip">Road (1 Wood, 1 Brick)</span>
+        </button>
+        <button id="buildSettlementBtn" class="action-btn">
+          🏠
+          <span class="tooltip"
+            >Settlement (1 Wood, 1 Brick, 1 Wheat, 1 Sheep)</span
+          >
+        </button>
+        <button id="buildCityBtn" class="action-btn">
+          🏰
+          <span class="tooltip">City (2 Wheat, 3 Ore)</span>
+        </button>
+        <button id="buyDevCardBtn" class="action-btn">
+          🃏
+          <span class="tooltip">Dev Card (1 Wheat, 1 Sheep, 1 Ore)</span>
+        </button>
+        <button id="tradeBtn" class="action-btn">
+          🤝
+          <span class="tooltip">Trade</span>
+        </button>
+        <button id="endTurnBtn" class="action-btn" style="background: #e74c3c">
+          🛑
+          <span class="tooltip">End Turn</span>
+        </button>
+      </div>
+
+      <!-- Bottom Bar: Hand -->
+      <div id="hand-container">
+        <!-- Cards injected here -->
+      </div>
     </div>
 
     <script src="/socket.io/socket.io.js"></script>
     <script src="shared.js"></script>
     <script src="client.js"></script>
-</body>
+  </body>
 </html>

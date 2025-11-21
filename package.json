@@ -4,7 +4,9 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node server.js",
+    "test": "node test-e2e.js",
+    "test:debug": "node --inspect test-e2e.js"
   },
   "keywords": [],
   "author": "",
@@ -12,6 +14,7 @@
   "packageManager": "pnpm@10.22.0",
   "dependencies": {
     "express": "^5.1.0",
-    "socket.io": "^4.8.1"
+    "socket.io": "^4.8.1",
+    "socket.io-client": "^4.8.1"
   }
 }

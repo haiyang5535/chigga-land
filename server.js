@@ -438,7 +438,10 @@ io.on("connection", (socket) => {
       return;
     }
 
-    if (gameState.phase === "ROBBER_PLACEMENT" || gameState.phase === "DISCARD_PHASE") {
+    if (
+      gameState.phase === "ROBBER_PLACEMENT" ||
+      gameState.phase === "DISCARD_PHASE"
+    ) {
       socket.emit("logMessage", "You must resolve the Gypsy/Discards first.");
       return;
     }
@@ -481,20 +484,26 @@ io.on("connection", (socket) => {
       gameState.buildings.some((b) => b.vertexId === neighborId)
     );
     if (isTooClose) {
-        socket.emit("logMessage", "Too close to another building (Distance Rule).");
-        return;
+      socket.emit(
+        "logMessage",
+        "Too close to another building (Distance Rule)."
+      );
+      return;
     }
 
     // Connectivity Rule (Must connect to own road if not setup)
     if (!isSetup) {
-        const edges = Shared.getEdgesOfVertex(vertexId);
-        const hasRoad = edges.some(eId => 
-            gameState.roads.some(r => r.edgeId === eId && r.owner === socket.id)
+      const edges = Shared.getEdgesOfVertex(vertexId);
+      const hasRoad = edges.some((eId) =>
+        gameState.roads.some((r) => r.edgeId === eId && r.owner === socket.id)
+      );
+      if (!hasRoad) {
+        socket.emit(
+          "logMessage",
+          "You must build connected to your road network."
         );
-        if (!hasRoad) {
-            socket.emit("logMessage", "You must build connected to your road network.");
-            return;
-        }
+        return;
+      }
     }
 
     // Deduct resources
@@ -566,7 +575,10 @@ io.on("connection", (socket) => {
 
   socket.on("buildCity", (data) => {
     if (!isPlayersTurn(socket.id)) return;
-    if (gameState.phase === "ROBBER_PLACEMENT" || gameState.phase === "DISCARD_PHASE") {
+    if (
+      gameState.phase === "ROBBER_PLACEMENT" ||
+      gameState.phase === "DISCARD_PHASE"
+    ) {
       socket.emit("logMessage", "You must resolve the Gypsy/Discards first.");
       return;
     }
@@ -613,7 +625,10 @@ io.on("connection", (socket) => {
       return;
     }
 
-    if (gameState.phase === "ROBBER_PLACEMENT" || gameState.phase === "DISCARD_PHASE") {
+    if (
+      gameState.phase === "ROBBER_PLACEMENT" ||
+      gameState.phase === "DISCARD_PHASE"
+    ) {
       socket.emit("logMessage", "You must resolve the Gypsy/Discards first.");
       return;
     }
@@ -939,7 +954,10 @@ io.on("connection", (socket) => {
 
   socket.on("buyDevCard", () => {
     if (!isPlayersTurn(socket.id)) return;
-    if (gameState.phase === "ROBBER_PLACEMENT" || gameState.phase === "DISCARD_PHASE") {
+    if (
+      gameState.phase === "ROBBER_PLACEMENT" ||
+      gameState.phase === "DISCARD_PHASE"
+    ) {
       socket.emit("logMessage", "You must resolve the Gypsy/Discards first.");
       return;
     }

@@ -438,6 +438,11 @@ io.on("connection", (socket) => {
       return;
     }
 
+    if (gameState.phase === "ROBBER_PLACEMENT" || gameState.phase === "DISCARD_PHASE") {
+      socket.emit("logMessage", "You must resolve the Gypsy/Discards first.");
+      return;
+    }
+
     const isSetup = gameState.phase.startsWith("SETUP");
 
     if (!isSetup && !gameState.hasRolled) {
@@ -475,7 +480,22 @@ io.on("connection", (socket) => {
     const isTooClose = neighbors.some((neighborId) =>
       gameState.buildings.some((b) => b.vertexId === neighborId)
     );
-    if (isTooClose) return;
+    if (isTooClose) {
+        socket.emit("logMessage", "Too close to another building (Distance Rule).");
+        return;
+    }
+
+    // Connectivity Rule (Must connect to own road if not setup)
+    if (!isSetup) {
+        const edges = Shared.getEdgesOfVertex(vertexId);
+        const hasRoad = edges.some(eId => 
+            gameState.roads.some(r => r.edgeId === eId && r.owner === socket.id)
+        );
+        if (!hasRoad) {
+            socket.emit("logMessage", "You must build connected to your road network.");
+            return;
+        }
+    }
 
     // Deduct resources
     if (!isSetup) {
@@ -546,6 +566,10 @@ io.on("connection", (socket) => {
 
   socket.on("buildCity", (data) => {
     if (!isPlayersTurn(socket.id)) return;
+    if (gameState.phase === "ROBBER_PLACEMENT" || gameState.phase === "DISCARD_PHASE") {
+      socket.emit("logMessage", "You must resolve the Gypsy/Discards first.");
+      return;
+    }
     if (!gameState.hasRolled) return;
 
     const vertexId = data.vertexId;
@@ -586,6 +610,11 @@ io.on("connection", (socket) => {
   socket.on("buildRoad", (data) => {
     if (!isPlayersTurn(socket.id)) {
       socket.emit("logMessage", "Not your turn!");
+      return;
+    }
+
+    if (gameState.phase === "ROBBER_PLACEMENT" || gameState.phase === "DISCARD_PHASE") {
+      socket.emit("logMessage", "You must resolve the Gypsy/Discards first.");
       return;
     }
 
@@ -910,6 +939,10 @@ io.on("connection", (socket) => {
 
   socket.on("buyDevCard", () => {
     if (!isPlayersTurn(socket.id)) return;
+    if (gameState.phase === "ROBBER_PLACEMENT" || gameState.phase === "DISCARD_PHASE") {
+      socket.emit("logMessage", "You must resolve the Gypsy/Discards first.");
+      return;
+    }
     if (!gameState.hasRolled) return;
 
     const player = gameState.players[socket.id];

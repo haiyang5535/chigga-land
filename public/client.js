@@ -45,11 +45,10 @@ rollBtn.addEventListener("click", () => socket.emit("rollDice"));
 document
   .getElementById("buyDevCardBtn")
   .addEventListener("click", () => socket.emit("buyDevCard"));
-document
-  .getElementById("tradeBtn")
-  .addEventListener("click", () =>
-    document.getElementById("tradeModal").classList.remove("hidden")
-  );
+document.getElementById("tradeBtn").addEventListener("click", () => {
+  document.getElementById("tradeModal").classList.remove("hidden");
+  updateTradeRates();
+});
 
 document.getElementById("postTradeBtn").addEventListener("click", () => {
   const offerRes = document.getElementById("offerRes").value;
@@ -62,7 +61,7 @@ document.getElementById("postTradeBtn").addEventListener("click", () => {
   const request = {};
   request[reqRes] = reqAmt;
 
-  socket.emit("createOffer", { offer, request });
+  socket.emit("offerTrade", { offer, request });
   document.getElementById("tradeModal").classList.add("hidden");
 });
 
@@ -103,15 +102,15 @@ let hoverState = { vertex: null, edge: null };
 
 // --- CONSTANTS ---
 const PORT_DATA = [
-  { q: -1, r: -2, type: "Generic", vec: { x: 0, y: -1 } },
-  { q: 1, r: -3, type: "Sheep", vec: { x: 1, y: -1 } },
-  { q: 3, r: -3, type: "Generic", vec: { x: 1, y: 0 } },
-  { q: 3, r: -1, type: "Generic", vec: { x: 1, y: 1 } },
-  { q: 2, r: 1, type: "Brick", vec: { x: 0, y: 1 } },
-  { q: 0, r: 2, type: "Wood", vec: { x: -1, y: 1 } },
-  { q: -2, r: 1, type: "Generic", vec: { x: -1, y: 0 } },
-  { q: -3, r: 0, type: "Wheat", vec: { x: -1, y: -1 } },
-  { q: -3, r: -2, type: "Ore", vec: { x: 0, y: -1 } },
+  { q: 0, r: -2, type: "Generic", vec: { x: 1, y: -1 } },
+  { q: 1, r: -2, type: "Wood", vec: { x: 1, y: -1 } },
+  { q: 2, r: -2, type: "Brick", vec: { x: 1, y: 0 } },
+  { q: 2, r: -1, type: "Generic", vec: { x: 1, y: 0 } },
+  { q: 2, r: 0, type: "Sheep", vec: { x: 1, y: 1 } },
+  { q: 1, r: 1, type: "Wheat", vec: { x: 1, y: 1 } },
+  { q: 0, r: 2, type: "Generic", vec: { x: -1, y: 1 } },
+  { q: -1, r: 2, type: "Ore", vec: { x: -1, y: 1 } },
+  { q: -2, r: 2, type: "Generic", vec: { x: -1, y: 0 } },
 ];
 
 const OCEAN_SCENERY = [
@@ -336,12 +335,29 @@ canvas.addEventListener(
 
 // --- UI UPDATES ---
 function updateUI() {
+  // Update Player Info in Top Left
+  const myPlayer = localState.players[socket.id];
+  if (myPlayer) {
+    const statsBar = document.getElementById("stats-bar");
+    let playerBadge = document.getElementById("my-player-badge");
+    if (!playerBadge) {
+      playerBadge = document.createElement("div");
+      playerBadge.id = "my-player-badge";
+      playerBadge.className = "badge";
+      playerBadge.style.textAlign = "left";
+      // Insert after logo
+      statsBar.insertBefore(playerBadge, statsBar.children[1]);
+    }
+    playerBadge.style.borderLeft = `5px solid ${myPlayer.color}`;
+    playerBadge.innerText = `You: ${myPlayer.name}`;
+  }
+
   if (localState.phase === "WAITING_FOR_PLAYERS") {
     turnIndicator.innerText = "Lobby: Waiting for players...";
 
     // Show start button only if I am the first player (Host)
     const playerIds = Object.keys(localState.players);
-    if (playerIds.length > 0 && playerIds[0] === socket.id) {
+    if (playerIds.length > 0) {
       startBtn.style.display = "block";
       document.getElementById("start-overlay").style.display = "block";
     } else {
@@ -457,7 +473,7 @@ function updateOffers() {
 
   list.innerHTML = "";
 
-  panel.style.display = "block";
+  // panel.style.display = "block"; // Don't force open
 
   if (localState.activeOffers.length === 0) {
     list.innerHTML =
@@ -505,6 +521,7 @@ function updateOffers() {
 
 // --- SOCKET EVENTS ---
 socket.on("init", (state) => {
+  localState.players = state.players || {};
   localState.board = state.board;
   localState.buildings = state.buildings;
   localState.roads = state.roads;
@@ -515,29 +532,54 @@ socket.on("init", (state) => {
   localState.activeOffers = state.activeOffers || [];
   localState.gypsy = state.gypsy;
   localState.ports = state.ports || [];
+  localState.music = state.music;
   render();
   updateUI();
   updateOffers();
+  if (localState.music) syncMusic(localState.music);
 });
 
 socket.on("requestDiscard", (data) => {
   const count = data.count;
-  alert(`The Gypsy! You must discard ${count} resources.`);
+  const modal = document.getElementById("discardModal");
+  document.getElementById("discardCount").innerText = count;
+  const controls = document.getElementById("discard-controls");
+  controls.innerHTML = "";
 
+  const resources = ["wood", "brick", "sheep", "wheat", "ore"];
   const toDiscard = { wood: 0, brick: 0, sheep: 0, wheat: 0, ore: 0 };
-  let remaining = count;
 
-  while (remaining > 0) {
-    const res = prompt(
-      `Discard ${remaining} more. Type resource name (wood, brick, sheep, wheat, ore):`
+  resources.forEach((res) => {
+    const div = document.createElement("div");
+    div.style.textAlign = "center";
+    div.innerHTML = `
+          <div style="margin-bottom:5px">${res}</div>
+          <input type="number" min="0" value="0" id="discard-${res}" style="width: 50px; padding: 5px; border-radius: 4px; border: 1px solid #ccc; color: black;">
+      `;
+    controls.appendChild(div);
+
+    const input = div.querySelector("input");
+    input.addEventListener("change", () => {
+      toDiscard[res] = parseInt(input.value) || 0;
+    });
+  });
+
+  modal.classList.remove("hidden");
+
+  document.getElementById("confirmDiscardBtn").onclick = () => {
+    const currentDiscarded = Object.values(toDiscard).reduce(
+      (a, b) => a + b,
+      0
     );
-    if (res && toDiscard.hasOwnProperty(res)) {
-      toDiscard[res]++;
-      remaining--;
+    if (currentDiscarded !== count) {
+      alert(
+        `You must discard exactly ${count} cards. Currently: ${currentDiscarded}`
+      );
+      return;
     }
-  }
-
-  socket.emit("discardResources", { resources: toDiscard });
+    socket.emit("discardResources", { resources: toDiscard });
+    modal.classList.add("hidden");
+  };
 });
 
 let lastDevCardCount = 0;
@@ -668,6 +710,8 @@ socket.on("roadPlaced", (road) => {
 });
 
 socket.on("diceRolled", (roll) => {
+  const diceVal = document.getElementById("last-roll-value");
+  if (diceVal) diceVal.innerText = roll;
   showDiceAnimation(roll);
 
   setTimeout(() => {
@@ -1315,4 +1359,191 @@ socket.on("gameReset", () => {
 
   render();
   updateUI();
+});
+
+function updateTradeRates() {
+  const ratesDiv = document.getElementById("trade-rates");
+  if (!ratesDiv) return;
+
+  const resources = ["wood", "brick", "sheep", "wheat", "ore"];
+  let ratesHtml = "<div>Standard Rate: 4:1</div>";
+
+  const myId = socket.id;
+  let has3to1 = false;
+  const specialPorts = [];
+
+  resources.forEach((res) => {
+    const ratio = Shared.getPlayerTradeRatio(myId, res, localState);
+    if (ratio === 3) has3to1 = true;
+    if (ratio === 2) specialPorts.push(res);
+  });
+
+  if (has3to1) {
+    ratesHtml +=
+      "<div style='color: #2ecc71'>3:1 Port Active (Any Resource)</div>";
+  }
+
+  specialPorts.forEach((res) => {
+    ratesHtml += `<div style='color: #f1c40f'>2:1 ${res.toUpperCase()} Port Active</div>`;
+  });
+
+  ratesDiv.innerHTML = ratesHtml;
+}
+
+document.getElementById("tradeBtn").addEventListener("click", () => {
+  document.getElementById("tradeModal").classList.remove("hidden");
+  updateTradeRates();
+});
+
+// --- MUSIC PLAYER ---
+let ytPlayer;
+window.onYouTubeIframeAPIReady = function () {
+  ytPlayer = new YT.Player("yt-player-container", {
+    height: "0",
+    width: "0",
+    videoId: "",
+    playerVars: {
+      playsinline: 1,
+      controls: 0,
+    },
+    events: {
+      onReady: onPlayerReady,
+      onStateChange: onPlayerStateChange,
+    },
+  });
+};
+
+function onPlayerStateChange(event) {
+  if (event.data === YT.PlayerState.PLAYING) {
+    const data = event.target.getVideoData();
+    if (data && data.title) {
+      document.getElementById("player-status").innerText = "🎵 " + data.title;
+    }
+  }
+}
+
+function onPlayerReady(event) {
+  event.target.setVolume(50);
+  if (localState.music && localState.music.status === "playing") {
+    syncMusic(localState.music);
+  }
+}
+
+function syncMusic(music) {
+  if (!ytPlayer || !ytPlayer.loadVideoById) return;
+
+  const statusDiv = document.getElementById("player-status");
+
+  if (music.status === "stopped" || !music.videoId) {
+    ytPlayer.stopVideo();
+    statusDiv.innerText = "No music playing";
+    return;
+  }
+
+  statusDiv.innerText = "Playing...";
+
+  const currentId = ytPlayer.getVideoData()["video_id"];
+  const playerState = ytPlayer.getPlayerState();
+
+  if (currentId !== music.videoId) {
+    ytPlayer.loadVideoById(music.videoId);
+  }
+
+  if (music.status === "playing") {
+    if (playerState !== YT.PlayerState.PLAYING) {
+      ytPlayer.playVideo();
+    }
+    document.getElementById("pauseMusicBtn").innerText = "⏸️";
+  } else {
+    ytPlayer.pauseVideo();
+    document.getElementById("pauseMusicBtn").innerText = "▶️";
+  }
+}
+
+document.getElementById("playMusicBtn").addEventListener("click", () => {
+  const url = document.getElementById("musicInput").value;
+  if (url) socket.emit("playMusic", url);
+});
+
+document.getElementById("pauseMusicBtn").addEventListener("click", () => {
+  socket.emit("pauseMusic");
+});
+
+document.getElementById("skipMusicBtn").addEventListener("click", () => {
+  socket.emit("skipMusic");
+});
+
+document.getElementById("volumeSlider").addEventListener("input", (e) => {
+  if (ytPlayer) ytPlayer.setVolume(e.target.value);
+});
+
+socket.on("musicUpdate", (music) => {
+  localState.music = music;
+  syncMusic(music);
+});
+
+// --- DRAGGABLE UI ---
+function makeDraggable(elmnt) {
+  let pos1 = 0,
+    pos2 = 0,
+    pos3 = 0,
+    pos4 = 0;
+
+  elmnt.onmousedown = dragMouseDown;
+
+  function dragMouseDown(e) {
+    // Don't drag if clicking on inputs or buttons
+    if (["INPUT", "BUTTON", "SELECT", "TEXTAREA"].includes(e.target.tagName))
+      return;
+    // Also check if target is inside a button (e.g. icon)
+    if (e.target.closest("button")) return;
+
+    e = e || window.event;
+    // e.preventDefault(); // This prevents focus on inputs if we clicked near them? No, we returned.
+    // But it prevents text selection.
+
+    // Convert current position to top/left if not already
+    const rect = elmnt.getBoundingClientRect();
+
+    // We need to handle the case where the element is already being dragged (absolute)
+    // vs initial CSS positioning.
+
+    // Set explicit top/left based on current visual position
+    elmnt.style.left = rect.left + "px";
+    elmnt.style.top = rect.top + "px";
+    elmnt.style.bottom = "auto";
+    elmnt.style.right = "auto";
+    elmnt.style.transform = "none"; // Remove centering transforms
+    elmnt.style.margin = "0"; // Remove margins that might affect positioning
+
+    pos3 = e.clientX;
+    pos4 = e.clientY;
+    document.onmouseup = closeDragElement;
+    document.onmousemove = elementDrag;
+  }
+
+  function elementDrag(e) {
+    e = e || window.event;
+    e.preventDefault();
+    // calculate the new cursor position:
+    pos1 = pos3 - e.clientX;
+    pos2 = pos4 - e.clientY;
+    pos3 = e.clientX;
+    pos4 = e.clientY;
+    // set the element's new position:
+    elmnt.style.top = elmnt.offsetTop - pos2 + "px";
+    elmnt.style.left = elmnt.offsetLeft - pos1 + "px";
+  }
+
+  function closeDragElement() {
+    // stop moving when mouse button is released:
+    document.onmouseup = null;
+    document.onmousemove = null;
+  }
+}
+
+// Apply to all hud panels
+document.querySelectorAll(".hud-panel").forEach((panel) => {
+  makeDraggable(panel);
+  panel.style.cursor = "move"; // Indicate draggable
 });

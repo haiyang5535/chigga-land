@@ -29,9 +29,44 @@
         <!-- Filled by JS: Avatar | Name | Cards | Army -->
       </div>
 
+      <!-- Dice Display (Under Player List) -->
+      <div
+        class="hud-panel"
+        id="dice-display"
+        style="
+          position: absolute;
+          top: 300px;
+          right: 20px;
+          text-align: center;
+          min-width: 100px;
+        "
+      >
+        <div style="font-size: 12px; color: #aaa">Last Roll</div>
+        <div
+          id="last-roll-value"
+          style="font-size: 24px; font-weight: bold; color: white"
+        >
+          -
+        </div>
+      </div>
+
       <!-- Right Side: Active Trades -->
       <div id="trade-sidebar" class="hud-panel">
-        <h3>Active Trades</h3>
+        <div
+          style="
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #555;
+            margin-bottom: 5px;
+            padding-bottom: 5px;
+          "
+        >
+          <h3 style="margin: 0; border: none; padding: 0">Active Trades</h3>
+          <span id="closeTradeSidebar" style="cursor: pointer; font-size: 20px"
+            >&times;</span
+          >
+        </div>
         <div id="trade-feed"></div>
       </div>
 
@@ -48,6 +83,95 @@
             maxlength="200"
           />
           <button id="sendChatBtn">➤</button>
+        </div>
+      </div>
+
+      <!-- Bottom Right: Music Player -->
+      <div
+        class="hud-panel"
+        id="music-player"
+        style="
+          position: absolute;
+          bottom: 20px;
+          right: 20px;
+          width: 250px;
+          padding: 10px;
+          display: flex;
+          flex-direction: column;
+          gap: 5px;
+        "
+      >
+        <div
+          style="
+            font-weight: bold;
+            border-bottom: 1px solid #555;
+            padding-bottom: 5px;
+            margin-bottom: 5px;
+          "
+        >
+          🎵 DJ Booth
+        </div>
+        <div
+          id="player-status"
+          style="
+            font-size: 12px;
+            color: #aaa;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+          "
+        >
+          No music playing
+        </div>
+
+        <!-- Hidden YouTube Player -->
+        <div
+          id="yt-player-container"
+          style="position: absolute; top: -9999px; left: -9999px"
+        ></div>
+
+        <div style="display: flex; gap: 5px">
+          <input
+            type="text"
+            id="musicInput"
+            placeholder="YouTube URL"
+            style="flex-grow: 1; font-size: 12px; padding: 4px"
+          />
+          <button id="playMusicBtn" style="font-size: 12px; padding: 4px 8px">
+            ▶️
+          </button>
+        </div>
+
+        <div
+          style="
+            display: flex;
+            gap: 5px;
+            justify-content: space-between;
+            align-items: center;
+          "
+        >
+          <div>
+            <button
+              id="pauseMusicBtn"
+              style="font-size: 12px; padding: 4px 8px"
+            >
+              ⏸️
+            </button>
+            <button id="skipMusicBtn" style="font-size: 12px; padding: 4px 8px">
+              ⏭️
+            </button>
+          </div>
+          <div style="display: flex; align-items: center; gap: 2px">
+            <span style="font-size: 10px">🔊</span>
+            <input
+              type="range"
+              id="volumeSlider"
+              min="0"
+              max="100"
+              value="50"
+              style="width: 60px"
+            />
+          </div>
         </div>
       </div>
 
@@ -83,6 +207,28 @@
         <input type="text" id="nicknameInput" placeholder="Enter your name" />
         <br />
         <button id="joinGameBtn" class="primary">Join Game</button>
+      </div>
+    </div>
+
+    <div id="discardModal" class="modal hidden">
+      <div class="modal-content">
+        <h2>The Gypsy!</h2>
+        <p>
+          You have more than 7 cards. Discard
+          <span id="discardCount">0</span> cards.
+        </p>
+        <div
+          id="discard-controls"
+          style="
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin: 20px 0;
+          "
+        >
+          <!-- JS injects controls -->
+        </div>
+        <button id="confirmDiscardBtn" class="primary">Discard</button>
       </div>
     </div>
 
@@ -141,7 +287,13 @@
 
         <hr style="margin: 20px 0; border-color: rgba(255, 255, 255, 0.1)" />
 
-        <h3>Bank Trade (4:1)</h3>
+        <h3>Maritime Trade</h3>
+        <div
+          id="trade-rates"
+          style="font-size: 12px; margin-bottom: 10px; color: #aaa"
+        >
+          Standard Rate: 4:1
+        </div>
         <select id="bankGive">
           <option>wood</option>
           <option>brick</option>
@@ -227,7 +379,12 @@
       </button>
     </div>
 
-    <script src="/socket.io/socket.io.js"></script>
+    <script
+      src="https://cdn.socket.io/4.7.5/socket.io.min.js"
+      integrity="sha384-2huaZvOR9iDzHqslqwpR87isEmrfxqyWOF7hr7BY6KG0+hVKLoEXMPUJw3ynWuhO"
+      crossorigin="anonymous"
+    ></script>
+    <script src="https://www.youtube.com/iframe_api"></script>
     <script src="shared.js"></script>
     <script src="client.js"></script>
   </body>

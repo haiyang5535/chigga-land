@@ -3,8 +3,9 @@ const app = express();
 const http = require("http").createServer(app);
 const io = require("socket.io")(http);
 const Shared = require("./public/shared.js");
+const path = require("path");
 
-app.use(express.static("public"));
+app.use(express.static(path.join(__dirname, "public")));
 
 // Predefined player colors for 5 players
 const PLAYER_COLORS = ["#FF6B6B", "#4ECDC4", "#45B7D1", "#FFA07A", "#98D8C8"];
@@ -32,6 +33,12 @@ let gameState = {
   hasPlayedDevCard: false,
   pendingDiscards: [], // List of socketIds who need to discard
   resetVotes: [], // Array of socketIds who voted to reset
+  music: {
+    videoId: null,
+    status: "stopped",
+    startTime: 0,
+    elapsed: 0,
+  },
 };
 
 function isPlayersTurn(socketId) {
@@ -73,6 +80,12 @@ function resetGame() {
   gameState.resetVotes = [];
   gameState.largestArmy = { owner: null, size: 0 };
   gameState.longestRoad = { owner: null, length: 0 };
+  gameState.music = {
+    videoId: null,
+    status: "stopped",
+    startTime: 0,
+    elapsed: 0,
+  };
 
   // Reset player state but keep them connected
   Object.values(gameState.players).forEach((p) => {
@@ -86,8 +99,8 @@ function resetGame() {
   });
 
   initBoard();
-  io.emit("init", gameState);
   io.emit("gameReset");
+  io.emit("init", gameState);
   io.emit("logMessage", "Game has been reset by vote!");
 }
 
@@ -186,15 +199,15 @@ function initBoard() {
   };
 
   // Hardcoded approximate positions for a standard-ish feel
-  addPort(0, -2, 0, 1, portTypes[0]);
-  addPort(1, -2, 1, 2, portTypes[1]);
-  addPort(2, -2, 2, 3, portTypes[2]);
-  addPort(2, -1, 3, 4, portTypes[3]);
-  addPort(2, 0, 4, 5, portTypes[4]);
-  addPort(1, 1, 5, 0, portTypes[5]);
-  addPort(0, 2, 0, 1, portTypes[6]);
-  addPort(-1, 2, 1, 2, portTypes[7]);
-  addPort(-2, 2, 2, 3, portTypes[8]);
+  addPort(0, -2, 5, 0, portTypes[0]); // 3:1 (Up-Right)
+  addPort(1, -2, 5, 0, portTypes[1]); // wood (Up-Right)
+  addPort(2, -2, 0, 1, portTypes[2]); // brick (Right)
+  addPort(2, -1, 0, 1, portTypes[3]); // 3:1 (Right)
+  addPort(2, 0, 1, 2, portTypes[4]); // sheep (Down-Right)
+  addPort(1, 1, 1, 2, portTypes[5]); // wheat (Down-Right)
+  addPort(0, 2, 2, 3, portTypes[6]); // 3:1 (Down-Left)
+  addPort(-1, 2, 2, 3, portTypes[7]); // ore (Down-Left)
+  addPort(-2, 2, 3, 4, portTypes[8]); // 3:1 (Left)
 }
 initBoard();
 
@@ -829,6 +842,15 @@ io.on("connection", (socket) => {
 
     io.emit("logMessage", `${player.name} posted a trade offer.`);
     io.emit("init", gameState);
+
+    // Auto-expire after 10 seconds
+    setTimeout(() => {
+      const idx = gameState.activeOffers.findIndex((o) => o.id === offerId);
+      if (idx !== -1) {
+        gameState.activeOffers.splice(idx, 1);
+        io.emit("init", gameState);
+      }
+    }, 10000);
   });
 
   socket.on("acceptTrade", (data) => {
@@ -1165,6 +1187,52 @@ io.on("connection", (socket) => {
       io.emit("chatMessage", chatData);
     }
   });
+
+  socket.on("playMusic", (url) => {
+    let videoId = null;
+    try {
+      const u = new URL(url);
+      if (u.hostname.includes("youtube.com")) {
+        videoId = u.searchParams.get("v");
+      } else if (u.hostname.includes("youtu.be")) {
+        videoId = u.pathname.slice(1);
+      }
+    } catch (e) {}
+
+    if (videoId) {
+      gameState.music = {
+        videoId: videoId,
+        status: "playing",
+        startTime: Date.now(),
+        elapsed: 0,
+      };
+      io.emit("musicUpdate", gameState.music);
+      io.emit("logMessage", "DJ started playing a track.");
+    }
+  });
+
+  socket.on("pauseMusic", () => {
+    if (gameState.music.status === "playing") {
+      gameState.music.status = "paused";
+      gameState.music.elapsed += Date.now() - gameState.music.startTime;
+      io.emit("musicUpdate", gameState.music);
+    } else if (gameState.music.status === "paused") {
+      gameState.music.status = "playing";
+      gameState.music.startTime = Date.now();
+      io.emit("musicUpdate", gameState.music);
+    }
+  });
+
+  socket.on("skipMusic", () => {
+    gameState.music = {
+      videoId: null,
+      status: "stopped",
+      startTime: 0,
+      elapsed: 0,
+    };
+    io.emit("musicUpdate", gameState.music);
+    io.emit("logMessage", "DJ skipped the track.");
+  });
 });
 
 function updateLongestRoads() {
@@ -1278,6 +1346,7 @@ function updateLargestArmy() {
   if (changed) io.emit("playerUpdate", gameState.players);
 }
 
-http.listen(3000, () => {
-  console.log("Server running on http://localhost:3000");
+const PORT = process.env.PORT || 3000;
+http.listen(PORT, () => {
+  console.log("Server running on port " + PORT);
 });
